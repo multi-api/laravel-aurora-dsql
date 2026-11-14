@@ -3,7 +3,7 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-14
 
 ### Changed
 - A unique declared in `Schema::create()` is now an inline `UNIQUE` table constraint in `CREATE TABLE` instead of a
@@ -78,6 +78,7 @@ All notable changes to this package are documented here. The format follows
 - Initial release: IAM token auth, DSQL-compatible schema builder (inline PK/FK, `ASYNC` indexes, identity)
   and migration helpers.
 
+[0.4.0]: https://github.com/multi-api/laravel-aurora-dsql/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/multi-api/laravel-aurora-dsql/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/multi-api/laravel-aurora-dsql/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/multi-api/laravel-aurora-dsql/compare/v0.2.1...v0.2.2
