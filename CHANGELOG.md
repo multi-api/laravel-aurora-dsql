@@ -3,6 +3,11 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-11-14
+
+### Changed
+- No code changes. Re-release of 0.4.0: Packagist's Composer metadata did not pick up 0.4.0.
+
 ## [0.4.0] - 2026-11-14
 
 ### Changed
@@ -78,6 +83,7 @@ All notable changes to this package are documented here. The format follows
 - Initial release: IAM token auth, DSQL-compatible schema builder (inline PK/FK, `ASYNC` indexes, identity)
   and migration helpers.
 
+[0.4.1]: https://github.com/multi-api/laravel-aurora-dsql/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/multi-api/laravel-aurora-dsql/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/multi-api/laravel-aurora-dsql/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/multi-api/laravel-aurora-dsql/compare/v0.2.2...v0.3.0
