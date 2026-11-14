@@ -14,7 +14,13 @@ use RuntimeException;
  *  - Primary and foreign keys can only be declared inline in CREATE TABLE
  *    (no ALTER TABLE ADD PRIMARY KEY / ADD CONSTRAINT): they are emitted as
  *    table constraints in compileCreate() and the separate ALTERs are dropped.
- *  - Only CREATE [UNIQUE] INDEX ASYNC is supported.
+ *  - Indexes are built with CREATE [UNIQUE] INDEX ASYNC, a background job.
+ *    A unique index declared in Schema::create() is a UNIQUE table
+ *    constraint inside CREATE TABLE instead: DSQL builds it with the (empty)
+ *    table, valid at once, with no job.
+ *  - A unique built either way is dropped by dropUnique() or dropIndex():
+ *    DsqlConnection runs DROP INDEX or ALTER TABLE ... DROP CONSTRAINT,
+ *    whichever the existing object needs.
  *  - There is no SERIAL; IDENTITY columns must be bigint with CACHE >= 65536.
  *  - One DDL statement per transaction: no schema transactions.
  *  - pg_total_relation_size is not supported (table listing).
@@ -28,8 +34,8 @@ class DsqlSchemaGrammar extends PostgresGrammar
     protected $transactions = false;
 
     /**
-     * CREATE TABLE with the blueprint's primary and foreign keys as inline
-     * table constraints.
+     * CREATE TABLE with the blueprint's primary keys, foreign keys and unique
+     * indexes as inline table constraints.
      */
     public function compileCreate(Blueprint $blueprint, Fluent $command)
     {
@@ -46,6 +52,12 @@ class DsqlSchemaGrammar extends PostgresGrammar
         foreach ($commands as $c) {
             if ($c->name === 'foreign') {
                 $definitions[] = $this->compileInlineForeign($blueprint, $c);
+            }
+        }
+
+        foreach ($commands as $c) {
+            if ($c->name === 'unique' && $this->inlinesUnique($blueprint, $c)) {
+                $definitions[] = $this->compileInlineUnique($c);
             }
         }
 
@@ -102,15 +114,54 @@ class DsqlSchemaGrammar extends PostgresGrammar
         );
     }
 
-    /** Unique (incl. composite) -> CREATE UNIQUE INDEX ASYNC */
+    /**
+     * Unique (incl. composite): inline in CREATE TABLE when the table is
+     * created (compileCreate()), otherwise CREATE UNIQUE INDEX ASYNC.
+     */
     public function compileUnique(Blueprint $blueprint, Fluent $command)
     {
+        if ($this->inlinesUnique($blueprint, $command)) {
+            return null;
+        }
+
         return sprintf('create unique index async %s on %s%s (%s)',
             $this->wrap($command->index),
             $this->wrapTable($blueprint),
             $command->algorithm ? ' using '.$command->algorithm : '',
             $this->columnize($command->columns)
         );
+    }
+
+    /**
+     * Whether a unique index goes inside CREATE TABLE: only while the table is
+     * being created, and not with an index method (USING ...), which a
+     * table constraint cannot take.
+     */
+    protected function inlinesUnique(Blueprint $blueprint, Fluent $command): bool
+    {
+        return $blueprint->creating() && ! $command->algorithm && ! $command->online;
+    }
+
+    /** "constraint x unique [nulls [not] distinct] (...)" */
+    protected function compileInlineUnique(Fluent $command): string
+    {
+        $unique = 'unique';
+
+        if (! is_null($command->nullsNotDistinct)) {
+            $unique .= ' nulls '.($command->nullsNotDistinct ? 'not distinct' : 'distinct');
+        }
+
+        return sprintf('constraint %s %s (%s)', $this->wrap($command->index), $unique, $this->columnize($command->columns));
+    }
+
+    /**
+     * A unique is either a constraint (inline in CREATE TABLE) or an index
+     * (CREATE UNIQUE INDEX ASYNC); DsqlConnection resolves which one this
+     * name is when the statement runs.
+     */
+    public function compileDropUnique(Blueprint $blueprint, Fluent $command)
+    {
+        return $this->compileDropIndex($blueprint, $command);
     }
 
     /**

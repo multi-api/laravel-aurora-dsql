@@ -3,6 +3,22 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- A unique declared in `Schema::create()` is now an inline `UNIQUE` table constraint in `CREATE TABLE` instead of a
+  separate `CREATE UNIQUE INDEX ASYNC`. DSQL builds it with the empty table: it is valid immediately and there is no
+  build job to wait for (verified on a live cluster: duplicate rows rejected, `ON CONFLICT` and leading-column
+  lookups use it, `NULLS NOT DISTINCT` honoured). A unique added to an existing table, or with an index method, is
+  still `CREATE UNIQUE INDEX ASYNC`.
+- `dropUnique()` now compiles to `DROP INDEX`, like `dropIndex()`, and the connection turns a `DROP INDEX` naming a
+  unique constraint into `ALTER TABLE ... DROP CONSTRAINT`. Either method drops either kind of unique, including
+  ones created by 0.3 (indexes) and by this version (constraints).
+
+### Fixed
+- The integration test for multi-statement transactions expected a boolean `select ? as b` to come back as `true`;
+  with emulated prepares it is the text `'true'`.
+
 ## [0.3.1] - 2026-11-04
 
 ### Fixed
