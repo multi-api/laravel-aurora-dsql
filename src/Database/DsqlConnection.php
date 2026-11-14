@@ -13,6 +13,9 @@ use Throwable;
  */
 class DsqlConnection extends PostgresConnection
 {
+    /** DROP INDEX [IF EXISTS] "name" (dropIndex() and dropUnique() both compile to it). */
+    private const DROP_INDEX = '/^\s*drop\s+index\s+(if\s+exists\s+)?"?([^"\s]+)"?\s*$/i';
+
     private const OCC_BASE_DELAY_MS = 50;
 
     private const OCC_MAX_DELAY_MS = 1000;
@@ -152,6 +155,10 @@ class DsqlConnection extends PostgresConnection
      */
     public function statement($query, $bindings = [])
     {
+        if (! $this->pretending() && preg_match(self::DROP_INDEX, $query, $m)) {
+            return parent::statement($this->dropIndexOrUniqueConstraint($query, $m[2]), $bindings);
+        }
+
         if ($this->pretending() || ! preg_match('/^\s*create\s+(unique\s+)?index\s+async\b/i', $query)) {
             return parent::statement($query, $bindings);
         }
@@ -163,5 +170,25 @@ class DsqlConnection extends PostgresConnection
         }
 
         return true;
+    }
+
+    /**
+     * A unique declared in Schema::create() is a table constraint (inline in
+     * CREATE TABLE), and its index cannot be dropped with DROP INDEX ("cannot
+     * drop index ... because constraint ... requires it"); one added later is
+     * a plain CREATE UNIQUE INDEX ASYNC index, which has no constraint to
+     * drop. So a DROP INDEX naming a unique constraint of the current schema
+     * becomes ALTER TABLE ... DROP CONSTRAINT; anything else runs as written.
+     */
+    protected function dropIndexOrUniqueConstraint(string $query, string $name): string
+    {
+        $table = $this->selectOne(
+            "select c.conrelid::regclass::text as tbl from pg_constraint c join pg_namespace n on n.oid = c.connamespace "
+            ."where c.conname = ? and c.contype = 'u' and n.nspname = current_schema()",
+            [$name],
+            false
+        )?->tbl;
+
+        return $table ? sprintf('alter table %s drop constraint "%s"', $table, str_replace('"', '""', $name)) : $query;
     }
 }

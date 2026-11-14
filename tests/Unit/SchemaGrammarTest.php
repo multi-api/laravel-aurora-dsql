@@ -72,10 +72,67 @@ class SchemaGrammarTest extends TestCase
         $this->assertSame([
             'create table "products" ("id" uuid not null, "category_id" uuid not null, "sku" varchar(255) not null, '
                 .'primary key ("id"), constraint "products_category_id_foreign" foreign key ("category_id") '
-                .'references "categories" ("id") on delete cascade)',
+                .'references "categories" ("id") on delete cascade, constraint "products_sku_unique" unique ("sku"))',
             'create index async "products_category_id_sku_index" on "products" ("category_id", "sku")',
-            'create unique index async "products_sku_unique" on "products" ("sku")',
         ], $sql);
+    }
+
+    #[Test]
+    public function uniques_declared_in_create_are_inline_table_constraints(): void
+    {
+        $sql = $this->sql(fn ($s) => $s->create('clusters', function (Blueprint $t) {
+            $t->uuid('id')->primary();
+            $t->uuid('team_id')->nullable();
+            $t->string('name');
+            $t->string('slug')->unique();
+            $t->unique(['team_id', 'name']);
+            $t->unique(['team_id', 'slug'])->nullsNotDistinct();
+        }));
+
+        $this->assertSame([
+            'create table "clusters" ("id" uuid not null, "team_id" uuid null, "name" varchar(255) not null, '
+                .'"slug" varchar(255) not null, primary key ("id"), '
+                .'constraint "clusters_team_id_name_unique" unique ("team_id", "name"), '
+                .'constraint "clusters_team_id_slug_unique" unique nulls not distinct ("team_id", "slug"), '
+                .'constraint "clusters_slug_unique" unique ("slug"))',
+        ], $sql);
+    }
+
+    #[Test]
+    public function a_unique_added_to_an_existing_table_is_an_async_index(): void
+    {
+        $sql = $this->sql(fn ($s) => $s->table('clusters', function (Blueprint $t) {
+            $t->unique(['team_id', 'name']);
+        }));
+
+        $this->assertSame(['create unique index async "clusters_team_id_name_unique" on "clusters" ("team_id", "name")'], $sql);
+    }
+
+    #[Test]
+    public function a_unique_with_an_index_method_stays_an_async_index_on_create(): void
+    {
+        $sql = $this->sql(fn ($s) => $s->create('t', function (Blueprint $t) {
+            $t->uuid('id')->primary();
+            $t->string('a');
+            $t->unique('a', null, 'btree');
+        }));
+
+        $this->assertSame([
+            'create table "t" ("id" uuid not null, "a" varchar(255) not null, primary key ("id"))',
+            'create unique index async "t_a_unique" on "t" using btree ("a")',
+        ], $sql);
+    }
+
+    #[Test]
+    public function drop_unique_and_drop_index_compile_to_drop_index(): void
+    {
+        $sql = $this->sql(fn ($s) => $s->table('clusters', function (Blueprint $t) {
+            $t->dropUnique(['team_id', 'name']);
+            $t->dropIndex('clusters_status_index');
+        }));
+
+        // The connection turns it into DROP CONSTRAINT when the name is a unique constraint (DropUniqueTest).
+        $this->assertSame(['drop index "clusters_team_id_name_unique"', 'drop index "clusters_status_index"'], $sql);
     }
 
     #[Test]
