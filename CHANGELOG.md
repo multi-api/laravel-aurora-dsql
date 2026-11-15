@@ -3,7 +3,7 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.2] - 2026-11-15
 
 ### Added
 - `port` connection setting (default `5432`), passed to the AWS connector. DSQL always listens on 5432; this is for a
