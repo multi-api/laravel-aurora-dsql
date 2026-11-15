@@ -41,6 +41,7 @@ class DsqlServiceProvider extends ServiceProvider
 
             $pdo = AuroraDsql::connect(new DsqlConfig(
                 host: $config['host'],
+                port: (int) ($config['port'] ?? 5432),
                 region: $config['region'] ?? null,
                 user: $config['username'] ?? 'admin',
                 database: $config['database'] ?? 'postgres',

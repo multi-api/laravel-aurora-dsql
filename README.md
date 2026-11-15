@@ -40,6 +40,7 @@ The service provider is auto-discovered. Add a connection to `config/database.ph
 'dsql' => [
     'driver' => 'dsql',
     'host' => env('DSQL_HOST'),                 // xxxx.dsql.us-east-1.on.aws
+    'port' => env('DSQL_PORT', 5432),           // 5432 on AWS; another port for a local emulator (e.g. Floci)
     'region' => env('AWS_REGION', 'us-east-1'),
     'username' => env('DSQL_USER', 'admin'),    // 'admin' => dsql:DbConnectAdmin; other roles => dsql:DbConnect
     'database' => 'postgres',                   // DSQL has a single database per cluster
