@@ -56,10 +56,12 @@ class SchemaBuilderTest extends TestCase
         $app['config']->set('database.connections.dsql', [
             'driver' => 'dsql',
             'host' => getenv('DSQL_HOST'),
+            'port' => getenv('DSQL_PORT') ?: 5432,
             'region' => getenv('AWS_REGION') ?: 'us-east-1',
             'username' => 'admin',
             'database' => 'postgres',
             'profile' => getenv('DSQL_PROFILE') ?: null,
+            'sslrootcert' => getenv('DSQL_SSLROOTCERT') ?: null,
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
