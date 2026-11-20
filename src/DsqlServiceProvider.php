@@ -8,6 +8,7 @@ use Illuminate\Database\Concerns\ParsesSearchPath;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\ServiceProvider;
 use Multiapi\LaravelAuroraDsql\Database\DsqlConnection;
+use Multiapi\LaravelAuroraDsql\Migrations\IndexBuildScheduler;
 use PDO;
 
 /**
@@ -60,6 +61,19 @@ class DsqlServiceProvider extends ServiceProvider
                 $config
             );
         }));
+    }
+
+    /**
+     * `migrate` builds the indexes of each DSQL connection together instead
+     * of waiting for them one by one (IndexBuildScheduler).
+     */
+    public function boot(): void
+    {
+        $this->app->singleton(IndexBuildScheduler::class);
+
+        if ($this->app->bound('events')) {
+            $this->app->make(IndexBuildScheduler::class)->subscribe($this->app->make('events'));
+        }
     }
 
     /**
