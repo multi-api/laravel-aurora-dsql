@@ -3,7 +3,7 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses [Semantic Versioning](https://semver.org/).
 
-## [0.5.0] - 2026-11-19
+## [0.5.0] - 2026-11-20
 
 ### Changed
 - `migrate` builds the indexes of a `dsql` connection together instead of waiting for each one in turn. On a first
