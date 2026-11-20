@@ -19,6 +19,8 @@ All notable changes to this package are documented here. The format follows
 ### Added
 - `index_builds` connection setting: `'deferred'` (default) or `'per-index'` for the previous behaviour, the wait
   after each index in migration order. `'wait_for_indexes' => false` also keeps the previous behaviour.
+- Integration tests for these builds: a run whose indexes end up valid, and a unique index over duplicate rows whose
+  failed job fails the run. They pass against Floci 2.4.0's emulated DSQL.
 
 ## [0.4.2] - 2026-11-15
 
