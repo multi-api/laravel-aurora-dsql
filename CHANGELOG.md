@@ -3,6 +3,25 @@
 All notable changes to this package are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-20
+
+### Changed
+- `migrate` builds the indexes of a `dsql` connection together instead of waiting for each one in turn. On a first
+  install (no migration recorded) every index is built when the run ends; on a deploy each migration's indexes are
+  built when it ends, before it is recorded. A statement that could notice a missing index builds that table's
+  indexes first, and a `dropIndex()` of an index not built yet cancels it. See "Index builds during `migrate`" in the
+  README. Measured in Arco Cloud, where this ran first: a from-scratch `migrate` went from about 20 minutes to under
+  one. Each connection has its own queue; connections of other drivers and the application's `Blueprint` are not
+  touched. A `CREATE INDEX ASYNC` written by hand is still awaited on the spot.
+- After these builds the driver reads each job's status in `sys.jobs` and checks `pg_index`: a job that failed or
+  was cancelled, or an index left invalid, fails the run with the job's details.
+
+### Added
+- `index_builds` connection setting: `'deferred'` (default) or `'per-index'` for the previous behaviour, the wait
+  after each index in migration order. `'wait_for_indexes' => false` also keeps the previous behaviour.
+- Integration tests for these builds: a run whose indexes end up valid, and a unique index over duplicate rows whose
+  failed job fails the run. They pass against the emulated DSQL of Floci 2.4.0 and 2.5.0.
+
 ## [0.4.2] - 2026-11-15
 
 ### Added

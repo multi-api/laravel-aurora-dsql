@@ -61,10 +61,16 @@ class DsqlSchemaGrammar extends PostgresGrammar
             }
         }
 
-        return sprintf('create table %s (%s)',
+        return $this->unaffectedByMissingIndexes(sprintf('create table %s (%s)',
             $this->wrapTable($blueprint),
             implode(', ', $definitions)
-        );
+        ));
+    }
+
+    /** ALTER TABLE ... ADD COLUMN, as PostgresGrammar compiles it. */
+    public function compileAdd(Blueprint $blueprint, Fluent $command)
+    {
+        return $this->unaffectedByMissingIndexes(parent::compileAdd($blueprint, $command));
     }
 
     /** The primary key is inlined by compileCreate(); DSQL cannot add it later. */
@@ -106,12 +112,12 @@ class DsqlSchemaGrammar extends PostgresGrammar
     /** Plain/composite index -> CREATE INDEX ASYNC */
     public function compileIndex(Blueprint $blueprint, Fluent $command)
     {
-        return sprintf('create index async %s on %s%s (%s)',
+        return $this->indexBuild($blueprint, $command, sprintf('create index async %s on %s%s (%s)',
             $this->wrap($command->index),
             $this->wrapTable($blueprint),
             $command->algorithm ? ' using '.$command->algorithm : '',
             $this->columnize($command->columns)
-        );
+        ));
     }
 
     /**
@@ -124,12 +130,41 @@ class DsqlSchemaGrammar extends PostgresGrammar
             return null;
         }
 
-        return sprintf('create unique index async %s on %s%s (%s)',
+        return $this->indexBuild($blueprint, $command, sprintf('create unique index async %s on %s%s (%s)',
             $this->wrap($command->index),
             $this->wrapTable($blueprint),
             $command->algorithm ? ' using '.$command->algorithm : '',
             $this->columnize($command->columns)
-        );
+        ));
+    }
+
+    /**
+     * Tells the connection which index and table a CREATE INDEX ASYNC is for,
+     * so a `migrate` run can queue it (DeferredIndexBuilds) without reading
+     * the SQL back.
+     */
+    protected function indexBuild(Blueprint $blueprint, Fluent $command, string $sql): string
+    {
+        if ($this->connection instanceof DsqlConnection) {
+            $this->connection->indexBuilds()->compiledIndex(
+                $sql, $blueprint->getTable(), $this->connection->getTablePrefix(), (string) $command->index
+            );
+        }
+
+        return $sql;
+    }
+
+    /**
+     * Marks a statement that cannot notice a missing index (a new table, a
+     * new column): a `migrate` run does not build queued indexes before it.
+     */
+    protected function unaffectedByMissingIndexes(string $sql): string
+    {
+        if ($this->connection instanceof DsqlConnection) {
+            $this->connection->indexBuilds()->compiledUnaffected($sql);
+        }
+
+        return $sql;
     }
 
     /**

@@ -20,6 +20,12 @@ class DsqlConnection extends PostgresConnection
 
     private const OCC_MAX_DELAY_MS = 1000;
 
+    /** A CREATE INDEX ASYNC that fails with OC001 applied nothing: it is retried up to this many attempts. */
+    private const INDEX_BUILD_MAX_ATTEMPTS = 10;
+
+    /** The index builds this connection holds back during a `migrate` run. */
+    private ?DeferredIndexBuilds $indexBuilds = null;
+
     /** @var (callable(int): void)|null Replaces usleep; for tests only. */
     private static $sleeper = null;
 
@@ -75,6 +81,10 @@ class DsqlConnection extends PostgresConnection
      */
     protected function run($query, $bindings, Closure $callback)
     {
+        if ($this->indexBuilds?->active() && ! $this->pretending()) {
+            $this->indexBuilds->beforeQuery($query);
+        }
+
         if ($this->transactionLevel() > 0 || ! preg_match('/^\s*(insert|update|delete)\b/i', $query)) {
             return parent::run($query, $bindings, $callback);
         }
@@ -92,6 +102,19 @@ class DsqlConnection extends PostgresConnection
                 $this->occBackoff($attempt);
             }
         }
+    }
+
+    /**
+     * DSQL does not mix DDL and DML in one transaction, so the indexes a
+     * `migrate` run holds back cannot be built once it is open.
+     */
+    public function beginTransaction()
+    {
+        if ($this->transactions === 0 && $this->indexBuilds?->active() && ! $this->pretending()) {
+            $this->indexBuilds->beforeTransaction();
+        }
+
+        parent::beginTransaction();
     }
 
     private function occMaxAttempts(): int
@@ -152,14 +175,31 @@ class DsqlConnection extends PostgresConnection
      * until the job finishes. By default we wait for it (CALL sys.wait_for_job)
      * so later migrations can rely on the index; disable it with
      * 'wait_for_indexes' => false in the connection config.
+     *
+     * During a `migrate` run the indexes the schema builder creates are
+     * queued instead and built together: see DeferredIndexBuilds.
      */
     public function statement($query, $bindings = [])
     {
-        if (! $this->pretending() && preg_match(self::DROP_INDEX, $query, $m)) {
+        if ($this->pretending()) {
+            return parent::statement($query, $bindings);
+        }
+
+        $deferred = $this->indexBuilds?->active() ? $this->indexBuilds : null;
+
+        if (preg_match(self::DROP_INDEX, $query, $m)) {
+            if ($deferred?->forget($m[2])) {
+                return true;
+            }
+
             return parent::statement($this->dropIndexOrUniqueConstraint($query, $m[2]), $bindings);
         }
 
-        if ($this->pretending() || ! preg_match('/^\s*create\s+(unique\s+)?index\s+async\b/i', $query)) {
+        if ($deferred?->queue($query)) {
+            return true;
+        }
+
+        if (! preg_match('/^\s*create\s+(unique\s+)?index\s+async\b/i', $query)) {
             return parent::statement($query, $bindings);
         }
 
@@ -170,6 +210,47 @@ class DsqlConnection extends PostgresConnection
         }
 
         return true;
+    }
+
+    /** The index builds this connection holds back during a `migrate` run (DeferredIndexBuilds). */
+    public function indexBuilds(): DeferredIndexBuilds
+    {
+        return $this->indexBuilds ??= new DeferredIndexBuilds($this);
+    }
+
+    /**
+     * Whether `migrate` builds this connection's indexes together. Off with
+     * 'index_builds' => 'per-index' (wait after each index, in migration
+     * order) and with 'wait_for_indexes' => false (nothing waits at all).
+     */
+    public function defersIndexBuilds(): bool
+    {
+        return ($this->getConfig('index_builds') ?? 'deferred') !== 'per-index'
+            && $this->getConfig('wait_for_indexes') !== false;
+    }
+
+    /**
+     * Runs a CREATE [UNIQUE] INDEX ASYNC without waiting for its job, and
+     * returns the job id. A build job that finishes meanwhile fails the
+     * statement with OC001; nothing was applied, so it is retried.
+     *
+     * @internal
+     */
+    public function startIndexBuild(string $sql): ?string
+    {
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                $jobId = $this->selectOne($sql, [], false)?->job_id ?? null;
+
+                return $jobId === null ? null : (string) $jobId;
+            } catch (Throwable $e) {
+                if ($attempt >= self::INDEX_BUILD_MAX_ATTEMPTS || ! $this->causedByConcurrencyError($e)) {
+                    throw $e;
+                }
+
+                $this->occBackoff($attempt);
+            }
+        }
     }
 
     /**
